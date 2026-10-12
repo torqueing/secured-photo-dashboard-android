@@ -7,7 +7,9 @@ import com.squareup.moshi.JsonClass
 data class RegisterRequest(
     val email: String,
     val password: String,
-    @param:Json(name = "display_name") val displayName: String,
+    val username: String,
+    @param:Json(name = "first_name") val firstName: String,
+    @param:Json(name = "last_name") val lastName: String,
 )
 
 @JsonClass(generateAdapter = true)
@@ -30,6 +32,9 @@ data class UserDto(
     val id: Long,
     val email: String,
     @param:Json(name = "display_name") val displayName: String,
+    val username: String = "",
+    @param:Json(name = "first_name") val firstName: String = "",
+    @param:Json(name = "last_name") val lastName: String = "",
     val role: String,
     /** Null until a platform admin or an invite puts the user in an organisation. */
     @param:Json(name = "org_id") val orgId: Long?,

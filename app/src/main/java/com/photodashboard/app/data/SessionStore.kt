@@ -58,7 +58,9 @@ class SessionStore(private val context: Context) {
             it[Keys.token] = auth.token
             it[Keys.userId] = auth.user.id
             it[Keys.email] = auth.user.email
-            it[Keys.displayName] = auth.user.displayName
+            // Shown as "First Last".
+            it[Keys.displayName] = listOf(auth.user.firstName, auth.user.lastName).filter { n -> n.isNotBlank() }
+                .joinToString(" ").ifBlank { auth.user.displayName }
             val orgId = auth.user.orgId
             if (orgId == null) it.remove(Keys.orgId) else it[Keys.orgId] = orgId
             it[Keys.mustChangePassword] = auth.user.mustChangePassword

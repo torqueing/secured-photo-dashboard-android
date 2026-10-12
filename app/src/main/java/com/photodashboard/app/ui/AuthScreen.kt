@@ -38,12 +38,14 @@ fun AuthScreen(
     busy: Boolean,
     apiConfigured: Boolean,
     onSignIn: (String, String) -> Unit,
-    onRegister: (String, String, String) -> Unit,
+    onRegister: (RegisterForm) -> Unit,
 ) {
     var registering by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var name by rememberSaveable { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -57,6 +59,14 @@ fun AuthScreen(
                 "No API URL was built into this app. Set api.base.url in local.properties and rebuild.",
                 color = MaterialTheme.colorScheme.error,
             )
+        }
+        if (registering) {
+            OutlinedTextField(
+                username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("3–30 letters, numbers, dots, dashes or underscores") },
+            )
+            OutlinedTextField(firstName, { firstName = it }, label = { Text("First name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(lastName, { lastName = it }, label = { Text("Last name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
         OutlinedTextField(
             email, { email = it }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -76,12 +86,14 @@ fun AuthScreen(
             Checkbox(checked = showPassword, onCheckedChange = null)
             Text("Show password", Modifier.padding(start = 8.dp))
         }
-        if (registering) {
-            OutlinedTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        }
-        val valid = email.contains('@') && password.isNotEmpty() && (!registering || (password.length >= 8 && name.isNotBlank()))
+        val valid = email.contains('@') && password.isNotEmpty() && (
+            !registering || (password.length >= 8 && username.isNotBlank() && firstName.isNotBlank() && lastName.isNotBlank())
+            )
         Button(
-            onClick = { if (registering) onRegister(email, password, name) else onSignIn(email, password) },
+            onClick = {
+                if (registering) onRegister(RegisterForm(email, password, username, firstName, lastName))
+                else onSignIn(email, password)
+            },
             enabled = valid && !busy && apiConfigured,
             modifier = Modifier.fillMaxWidth(),
         ) {

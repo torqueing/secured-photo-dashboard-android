@@ -86,9 +86,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         afterSignIn()
     }
 
-    fun register(email: String, password: String, displayName: String) = launchBusy {
-        require(password.length >= 8) { "Password must be at least 8 characters" }
-        val auth = container.api.register(RegisterRequest(email.trim(), password, displayName.trim()))
+    fun register(form: RegisterForm) = launchBusy {
+        require(form.password.length >= 8) { "Password must be at least 8 characters" }
+        require(RegisterForm.USERNAME.matches(form.username.trim())) {
+            "Username must be 3-30 characters: letters, numbers, dots, dashes or underscores"
+        }
+        val auth = container.api.register(
+            RegisterRequest(
+                email = form.email.trim(),
+                password = form.password,
+                username = form.username.trim().lowercase(),
+                firstName = form.firstName.trim(),
+                lastName = form.lastName.trim(),
+            ),
+        )
         container.session.save(auth)
         afterSignIn()
     }
