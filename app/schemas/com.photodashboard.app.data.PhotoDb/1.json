@@ -1,0 +1,147 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "be909092a3551cca3b08a524028ed030",
+    "entities": [
+      {
+        "tableName": "photos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`localId` TEXT NOT NULL, `userId` INTEGER NOT NULL, `filePath` TEXT, `mediaStoreUri` TEXT, `capturedAt` INTEGER NOT NULL, `utcOffsetMinutes` INTEGER NOT NULL, `latitude` REAL, `longitude` REAL, `altitudeM` REAL, `accuracyM` REAL, `bearingDeg` REAL, `speedMps` REAL, `locationProvider` TEXT, `noLocation` INTEGER NOT NULL, `width` INTEGER, `height` INTEGER, `sizeBytes` INTEGER, `state` TEXT NOT NULL, `serverPhotoId` TEXT, `s3Key` TEXT, `publicUrl` TEXT, `attempts` INTEGER NOT NULL, `lastError` TEXT, PRIMARY KEY(`localId`))",
+        "fields": [
+          {
+            "fieldPath": "localId",
+            "columnName": "localId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filePath",
+            "columnName": "filePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mediaStoreUri",
+            "columnName": "mediaStoreUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "utcOffsetMinutes",
+            "columnName": "utcOffsetMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "altitudeM",
+            "columnName": "altitudeM",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracyM",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bearingDeg",
+            "columnName": "bearingDeg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "speedMps",
+            "columnName": "speedMps",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "locationProvider",
+            "columnName": "locationProvider",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "noLocation",
+            "columnName": "noLocation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "width",
+            "columnName": "width",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "height",
+            "columnName": "height",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "sizeBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverPhotoId",
+            "columnName": "serverPhotoId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "s3Key",
+            "columnName": "s3Key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "publicUrl",
+            "columnName": "publicUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "localId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'be909092a3551cca3b08a524028ed030')"
+    ]
+  }
+}
