@@ -7,6 +7,7 @@ import com.photodashboard.app.BuildConfig
 import com.photodashboard.app.PhotoDashboardApp
 import com.photodashboard.app.data.ChangePasswordRequest
 import com.photodashboard.app.data.LoginRequest
+import com.photodashboard.app.data.MfaVerifyRequest
 import com.photodashboard.app.data.PhotoEntity
 import com.photodashboard.app.data.RegisterRequest
 import com.photodashboard.app.data.Session
@@ -81,13 +82,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Set while sign-in waits for a two-factor code. */
+    private val _mfaToken = MutableStateFlow<String?>(null)
+    val mfaPending: StateFlow<Boolean> = MutableStateFlow(false).also { flag ->
+        viewModelScope.launch { _mfaToken.collect { flag.value = it != null } }
+    }
+
     fun signIn(email: String, password: String) = launchBusy {
-        container.session.save(container.api.login(LoginRequest(email.trim(), password)))
+        val res = container.api.login(LoginRequest(email.trim(), password, android.os.Build.MODEL))
+        if (res.mfaRequired) {
+            _mfaToken.value = res.mfaToken
+            return@launchBusy
+        }
+        container.session.save(res)
         afterSignIn()
     }
 
+    fun verifyMfa(code: String) = launchBusy {
+        val token = _mfaToken.value ?: return@launchBusy
+        try {
+            container.session.save(container.api.verifyMfa(MfaVerifyRequest(token, code.trim(), android.os.Build.MODEL)))
+            _mfaToken.value = null
+            afterSignIn()
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() == 401 && e.apiMessage().contains("expired")) _mfaToken.value = null
+            throw e
+        }
+    }
+
+    fun cancelMfa() {
+        _mfaToken.value = null
+    }
+
     fun register(form: RegisterForm) = launchBusy {
-        require(form.password.length >= 8) { "Password must be at least 8 characters" }
+        require(form.password.length >= RegisterForm.MIN_PASSWORD) { "Password must be at least ${RegisterForm.MIN_PASSWORD} characters" }
         require(RegisterForm.USERNAME.matches(form.username.trim())) {
             "Username must be 3-30 characters: letters, numbers, dots, dashes or underscores"
         }
@@ -105,7 +133,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun afterSignIn() {
-        if (container.session.current()?.mustChangePassword == true) return
+        val s = container.session.current()
+        if (s?.mustChangePassword == true || s?.mfaSetupRequired == true) return
         repo.resumePending()
         runCatching { repo.refreshFromServer() }
     }
@@ -123,7 +152,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Returns null on success, else the error to show in the dialog. */
     suspend fun changePassword(current: String, new: String): String? = try {
-        require(new.length >= 8) { "New password must be at least 8 characters" }
+        require(new.length >= RegisterForm.MIN_PASSWORD) { "New password must be at least ${RegisterForm.MIN_PASSWORD} characters" }
         container.api.changePassword(ChangePasswordRequest(current, new))
         val wasForced = container.session.current()?.mustChangePassword == true
         container.session.setMustChangePassword(false)

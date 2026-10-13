@@ -56,7 +56,7 @@ fun ForcedPasswordScreen(onSubmit: suspend (String, String) -> String?, onSignOu
             visualTransformation = transform, keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(new, { new = it }, label = { Text("New password") }, singleLine = true,
             visualTransformation = transform, keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth(),
-            supportingText = { Text("At least 8 characters") })
+            supportingText = { Text("At least 10 characters; not a common password") })
         OutlinedTextField(repeat, { repeat = it }, label = { Text("Repeat new password") }, singleLine = true,
             visualTransformation = transform, keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth())
         Row(
@@ -68,7 +68,7 @@ fun ForcedPasswordScreen(onSubmit: suspend (String, String) -> String?, onSignOu
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
-            enabled = !busy && current.isNotEmpty() && new.length >= 8,
+            enabled = !busy && current.isNotEmpty() && new.length >= RegisterForm.MIN_PASSWORD,
             modifier = Modifier.fillMaxWidth(),
             onClick = {
                 if (new != repeat) {

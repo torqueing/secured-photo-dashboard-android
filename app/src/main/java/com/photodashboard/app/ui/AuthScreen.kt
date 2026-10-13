@@ -39,7 +39,14 @@ fun AuthScreen(
     apiConfigured: Boolean,
     onSignIn: (String, String) -> Unit,
     onRegister: (RegisterForm) -> Unit,
+    mfaPending: Boolean = false,
+    onVerifyMfa: (String) -> Unit = {},
+    onCancelMfa: () -> Unit = {},
 ) {
+    if (mfaPending) {
+        MfaCodeStep(busy, onVerifyMfa, onCancelMfa)
+        return
+    }
     var registering by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -77,7 +84,7 @@ fun AuthScreen(
             visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            supportingText = if (registering) ({ Text("At least 8 characters") }) else null,
+            supportingText = if (registering) ({ Text("At least 10 characters; not a common password or your username") }) else null,
         )
         Row(
             Modifier.fillMaxWidth().toggleable(value = showPassword, role = Role.Checkbox, onValueChange = { showPassword = it }),
@@ -87,7 +94,7 @@ fun AuthScreen(
             Text("Show password", Modifier.padding(start = 8.dp))
         }
         val valid = email.contains('@') && password.isNotEmpty() && (
-            !registering || (password.length >= 8 && username.isNotBlank() && firstName.isNotBlank() && lastName.isNotBlank())
+            !registering || (password.length >= RegisterForm.MIN_PASSWORD && username.isNotBlank() && firstName.isNotBlank() && lastName.isNotBlank())
             )
         Button(
             onClick = {
@@ -102,5 +109,26 @@ fun AuthScreen(
         TextButton(onClick = { registering = !registering }, modifier = Modifier.fillMaxWidth()) {
             Text(if (registering) "Have an account? Sign in" else "New here? Register")
         }
+    }
+}
+
+/** Second sign-in step: the 6-digit code from the authenticator app. */
+@Composable
+private fun MfaCodeStep(busy: Boolean, onVerify: (String) -> Unit, onCancel: () -> Unit) {
+    var code by rememberSaveable { mutableStateOf("") }
+    Column(
+        Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Two-factor authentication", style = MaterialTheme.typography.headlineSmall)
+        Text("Enter the 6-digit code from your authenticator app.")
+        OutlinedTextField(
+            code, { v -> code = v.filter { it.isDigit() }.take(6) }, label = { Text("Code") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        )
+        Button(onClick = { onVerify(code) }, enabled = code.length == 6 && !busy, modifier = Modifier.fillMaxWidth()) {
+            if (busy) CircularProgressIndicator(Modifier.padding(2.dp)) else Text("Verify")
+        }
+        TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Back") }
     }
 }

@@ -50,7 +50,7 @@ fun ChangePasswordDialog(onSubmit: suspend (String, String) -> String?, onDismis
                     visualTransformation = transform, keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(new, { new = it }, label = { Text("New password") }, singleLine = true,
                     visualTransformation = transform, keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth(),
-                    supportingText = { Text("At least 8 characters") })
+                    supportingText = { Text("At least 10 characters; not a common password") })
                 OutlinedTextField(repeat, { repeat = it }, label = { Text("Repeat new password") }, singleLine = true,
                     visualTransformation = transform, keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth())
                 Row(
@@ -65,7 +65,7 @@ fun ChangePasswordDialog(onSubmit: suspend (String, String) -> String?, onDismis
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && current.isNotEmpty() && new.length >= 8,
+                enabled = !busy && current.isNotEmpty() && new.length >= RegisterForm.MIN_PASSWORD,
                 onClick = {
                     if (new != repeat) {
                         error = "New passwords do not match"

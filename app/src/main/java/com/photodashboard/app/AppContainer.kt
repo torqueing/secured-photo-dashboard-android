@@ -16,10 +16,19 @@ class AppContainer(context: Context) {
     val api: PhotoApi = ApiFactory.create(
         BuildConfig.API_BASE_URL.ifBlank { "https://api.invalid/v1" },
         http,
-        token = { session.cachedToken },
-        // The server revoked this session (signed out elsewhere, forced password change, deleted).
-        onUnauthorized = { runBlocking { session.clear() } },
-        onPasswordChangeRequired = { runBlocking { session.setMustChangePassword(true) } },
+        object : ApiFactory.TokenStore {
+            override val accessToken get() = session.cachedToken
+            override val refreshToken get() = session.cachedRefreshToken
+            override fun saveTokens(access: String, refresh: String) = runBlocking { session.saveTokens(access, refresh) }
+
+            // The server revoked this session (signed out elsewhere, forced password change, deleted).
+            override fun signedOut() = runBlocking { session.clear() }
+
+            override fun accountActionRequired(code: String) = runBlocking {
+                if (code == "password_change_required") session.setMustChangePassword(true)
+                else session.setMfaSetupRequired(true)
+            }
+        },
     )
     val db = PhotoDb.create(context)
     val repository = PhotoRepository(context, db, api, session)

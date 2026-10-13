@@ -13,7 +13,21 @@ data class RegisterRequest(
 )
 
 @JsonClass(generateAdapter = true)
-data class LoginRequest(val email: String, val password: String)
+data class LoginRequest(
+    val email: String,
+    val password: String,
+    @param:Json(name = "device_label") val deviceLabel: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class MfaVerifyRequest(
+    @param:Json(name = "mfa_token") val mfaToken: String,
+    val code: String,
+    @param:Json(name = "device_label") val deviceLabel: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class RefreshRequest(@param:Json(name = "refresh_token") val refreshToken: String)
 
 @JsonClass(generateAdapter = true)
 data class ChangePasswordRequest(
@@ -41,10 +55,20 @@ data class UserDto(
     @param:Json(name = "org_name") val orgName: String?,
     /** Set by an org admin: the user must choose a new password before anything else. */
     @param:Json(name = "must_change_password") val mustChangePassword: Boolean = false,
+    @param:Json(name = "totp_enabled") val totpEnabled: Boolean = false,
+    /** password_change_required, mfa_setup_required, or null when the account is ready. */
+    @param:Json(name = "account_action") val accountAction: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
-data class AuthResponse(val token: String, val user: UserDto)
+data class AuthResponse(
+    @param:Json(name = "access_token") val accessToken: String? = null,
+    @param:Json(name = "refresh_token") val refreshToken: String? = null,
+    val user: UserDto? = null,
+    /** Sign-in needs a second step: post [mfaToken] and a TOTP code to auth/mfa/verify. */
+    @param:Json(name = "mfa_required") val mfaRequired: Boolean = false,
+    @param:Json(name = "mfa_token") val mfaToken: String? = null,
+)
 
 @JsonClass(generateAdapter = true)
 data class UploadUrlRequest(@param:Json(name = "photo_id") val photoId: String?)

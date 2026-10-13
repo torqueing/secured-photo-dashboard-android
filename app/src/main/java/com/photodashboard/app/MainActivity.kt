@@ -32,6 +32,7 @@ import com.photodashboard.app.ui.AuthScreen
 import com.photodashboard.app.ui.ForcedPasswordScreen
 import com.photodashboard.app.ui.GalleryScreen
 import com.photodashboard.app.ui.HomeScreen
+import com.photodashboard.app.ui.MfaSetupRequiredScreen
 import com.photodashboard.app.ui.SplashScreen
 import com.photodashboard.app.ui.PhotoDetailScreen
 import com.photodashboard.app.ui.SessionState
@@ -72,10 +73,16 @@ private fun App(vm: AppViewModel) {
     Box(Modifier.fillMaxSize()) {
         when (val s = session) {
             SessionState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            SessionState.SignedOut -> AuthScreen(busy, vm.apiConfigured, vm::signIn, vm::register)
+            SessionState.SignedOut -> {
+                val mfaPending by vm.mfaPending.collectAsStateWithLifecycle()
+                AuthScreen(busy, vm.apiConfigured, vm::signIn, vm::register, mfaPending, vm::verifyMfa, vm::cancelMfa)
+            }
             is SessionState.SignedIn ->
-                if (s.session.mustChangePassword) ForcedPasswordScreen(vm::changePassword, onSignOut = { vm.signOut() })
-                else SignedIn(vm, s.session.displayName)
+                when {
+                    s.session.mustChangePassword -> ForcedPasswordScreen(vm::changePassword, onSignOut = { vm.signOut() })
+                    s.session.mfaSetupRequired -> MfaSetupRequiredScreen(onSignOut = { vm.signOut() })
+                    else -> SignedIn(vm, s.session.displayName)
+                }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
