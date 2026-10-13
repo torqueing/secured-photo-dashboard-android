@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.play.services.location)
     implementation(libs.retrofit)
+    implementation(libs.tink.android)
     ksp(libs.androidx.room.compiler)
     ksp(libs.moshi.kotlin.codegen)
 
