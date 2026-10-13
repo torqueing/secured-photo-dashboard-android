@@ -29,7 +29,8 @@ import javax.crypto.spec.PSource
 
 /**
  * Hardware-backed keys in the Android Keystore (spec 4.1):
- *  - signing key: EC P-256 with key attestation; signs each photo's fingerprint at capture.
+ *  - signing keys: EC P-256 with key attestation, one per account signed in on this phone (the
+ *    server ties each key to one user); signs each photo's fingerprint at capture.
  *  - storage key: RSA-2048 that wraps each photo key for this phone. Wrapping uses the public
  *    half (no unlock needed at capture); unwrapping needs fingerprint/PIN within 5 minutes,
  *    which is the gallery lock (decision D2).
@@ -53,10 +54,13 @@ class DeviceKeys(private val context: Context) {
         }
 
     // ---------------------------------------------------------------- signing key
-    private fun ensureSigningKey() {
-        if (keyStore.containsAlias(SIGNING)) return
+    private fun signingAlias(userId: Long) = "$SIGNING-u$userId"
+
+    private fun ensureSigningKey(userId: Long): String {
+        val alias = signingAlias(userId)
+        if (keyStore.containsAlias(alias)) return alias
         withStrongBoxFallback { strongBox ->
-            val spec = KeyGenParameterSpec.Builder(SIGNING, KeyProperties.PURPOSE_SIGN)
+            val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
                 .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .setAttestationChallenge(ByteArray(32).also { SecureRandom().nextBytes(it) })
@@ -65,26 +69,22 @@ class DeviceKeys(private val context: Context) {
             KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE).apply { initialize(spec) }
                 .generateKeyPair()
         }
+        return alias
     }
 
-    fun signingPublicKeySpki(): ByteArray {
-        ensureSigningKey()
-        return keyStore.getCertificate(SIGNING).publicKey.encoded
-    }
+    fun signingPublicKeySpki(userId: Long): ByteArray =
+        keyStore.getCertificate(ensureSigningKey(userId)).publicKey.encoded
 
     /** First 32 hex characters of SHA-256(SPKI): the id the server also derives. */
-    fun deviceKeyId(): String = MessageDigest.getInstance("SHA-256").digest(signingPublicKeySpki())
+    fun deviceKeyId(userId: Long): String = MessageDigest.getInstance("SHA-256").digest(signingPublicKeySpki(userId))
         .joinToString("") { "%02x".format(it) }.take(32)
 
-    fun attestationChainB64(): List<String> {
-        ensureSigningKey()
-        return keyStore.getCertificateChain(SIGNING).orEmpty().map { Base64.encodeToString(it.encoded, Base64.NO_WRAP) }
-    }
+    fun attestationChainB64(userId: Long): List<String> =
+        keyStore.getCertificateChain(ensureSigningKey(userId)).orEmpty().map { Base64.encodeToString(it.encoded, Base64.NO_WRAP) }
 
     /** ES256 signature (DER) over [payload], base64. */
-    fun sign(payload: ByteArray): String {
-        ensureSigningKey()
-        val key = keyStore.getKey(SIGNING, null) as PrivateKey
+    fun sign(userId: Long, payload: ByteArray): String {
+        val key = keyStore.getKey(ensureSigningKey(userId), null) as PrivateKey
         val sig = Signature.getInstance("SHA256withECDSA").apply { initSign(key); update(payload) }.sign()
         return Base64.encodeToString(sig, Base64.NO_WRAP)
     }
@@ -167,7 +167,7 @@ class DeviceKeys(private val context: Context) {
 
     companion object {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        private const val SIGNING = "spd-signing-v1"
+        private const val SIGNING = "spd-signing-v2"
         private const val STORAGE = "spd-storage-v1"
         private const val TOKENS = "session-tokens-v1"
         const val AUTH_VALIDITY_SECONDS = 300

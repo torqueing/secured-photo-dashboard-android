@@ -48,7 +48,7 @@ class SessionStore(private val context: Context, private val keys: DeviceKeys) {
         val orgPublicKey = stringPreferencesKey("org_public_key")
         val recoveryKeyId = stringPreferencesKey("recovery_key_id")
         val recoveryPublicKey = stringPreferencesKey("recovery_public_key")
-        val registeredDeviceKey = stringPreferencesKey("registered_device_key")
+        val registeredDeviceKey = stringPreferencesKey("registered_device_key") // pre-per-user marker, cleared on use
     }
 
     // Tokens are stored encrypted with a Keystore key; plain values from older versions are read once.
@@ -129,10 +129,13 @@ class SessionStore(private val context: Context, private val keys: DeviceKeys) {
         }
     }
 
-    suspend fun registeredDeviceKey(): String? = context.dataStore.data.first()[Keys.registeredDeviceKey]
+    // One signing key per account on this phone, so the "registered" marker is per account too.
+    private fun registeredKeyFor(userId: Long) = stringPreferencesKey("registered_device_key_u$userId")
 
-    suspend fun setRegisteredDeviceKey(id: String) {
-        context.dataStore.edit { it[Keys.registeredDeviceKey] = id }
+    suspend fun registeredDeviceKey(userId: Long): String? = context.dataStore.data.first()[registeredKeyFor(userId)]
+
+    suspend fun setRegisteredDeviceKey(userId: Long, id: String) {
+        context.dataStore.edit { it.remove(Keys.registeredDeviceKey); it[registeredKeyFor(userId)] = id }
     }
 
     suspend fun setMfaSetupRequired(value: Boolean) {

@@ -44,7 +44,7 @@ class PhotoSealer(private val keys: DeviceKeys, private val dir: File) {
     private val random = SecureRandom()
     private val isoSeconds = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT)
 
-    fun seal(photoId: String, jpeg: ByteArray, rotationDegrees: Int, capturedAt: Long, fix: GeoFix?, org: OrgKey): SealedPhoto {
+    fun seal(userId: Long, photoId: String, jpeg: ByteArray, rotationDegrees: Int, capturedAt: Long, fix: GeoFix?, org: OrgKey): SealedPhoto {
         val offset = ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(capturedAt))
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             .also { BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, it) }
@@ -59,9 +59,9 @@ class PhotoSealer(private val keys: DeviceKeys, private val dir: File) {
         val thumb = thumbnail(jpeg, rotationDegrees)
         val takenAt = isoSeconds.format(Instant.ofEpochMilli(capturedAt).atOffset(offset))
         val sha = SpdFormat.sha256Hex(withExif)
-        val deviceKeyId = keys.deviceKeyId()
+        val deviceKeyId = keys.deviceKeyId(userId)
         val payload = signingPayload(photoId, sha, takenAt, fix?.latitude, fix?.longitude, deviceKeyId)
-        val signature = keys.sign(payload.toByteArray(Charsets.UTF_8))
+        val signature = keys.sign(userId, payload.toByteArray(Charsets.UTF_8))
 
         val dek = ByteArray(32).also { random.nextBytes(it) }
         try {

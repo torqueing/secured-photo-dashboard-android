@@ -38,15 +38,17 @@ class PhotoRepository(
         session.orgKey()
     }
 
-    /** Register this phone's signing key with the server once (spec 8.3 key attestation). */
+    /** Register the signed-in user's signing key on this phone with the server once (spec 8.3). */
     suspend fun ensureDeviceKeyRegistered(): String = withContext(Dispatchers.IO) {
-        val id = deviceKeys.deviceKeyId()
-        if (session.registeredDeviceKey() != id) {
+        val userId = requireNotNull(session.current()) { "not signed in" }.userId
+        val id = deviceKeys.deviceKeyId(userId)
+        if (session.registeredDeviceKey(userId) != id) {
             val res = api.registerDeviceKey(
-                DeviceKeyRequest(Base64.encodeToString(deviceKeys.signingPublicKeySpki(), Base64.NO_WRAP), deviceKeys.attestationChainB64()),
+                DeviceKeyRequest(Base64.encodeToString(deviceKeys.signingPublicKeySpki(userId), Base64.NO_WRAP),
+                    deviceKeys.attestationChainB64(userId)),
             )
             check(res.deviceKeyId == id) { "server derived a different device key id" }
-            session.setRegisteredDeviceKey(id)
+            session.setRegisteredDeviceKey(userId, id)
         }
         id
     }
@@ -61,7 +63,7 @@ class PhotoRepository(
             val org = session.orgKey() ?: refreshOrgKey()
                 ?: error("The encryption key hasn't been downloaded yet; connect to the internet once and try again")
             val photoId = UUID.randomUUID().toString()
-            val sealed = sealer.seal(photoId, jpeg, rotationDegrees, capturedAt, fix, org)
+            val sealed = sealer.seal(user.userId, photoId, jpeg, rotationDegrees, capturedAt, fix, org)
             val offset = ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(capturedAt))
             val photo = PhotoEntity(
                 localId = photoId,
