@@ -23,7 +23,7 @@ class PhotoDbMigrationTest {
                     "VALUES ('a', 1, '/x.jpg', NULL, 0, 60, 1, 'PENDING', 0)",
             )
         }
-        helper.runMigrationsAndValidate("migration-test", 2, true, PhotoDb.MIGRATION_1_2).use { db ->
+        helper.runMigrationsAndValidate("migration-test", 3, true, PhotoDb.MIGRATION_1_2, PhotoDb.MIGRATION_2_3).use { db ->
             db.query("SELECT localId, state, stage, progress FROM photos").use { c ->
                 c.moveToFirst()
                 assertEquals("a", c.getString(0))

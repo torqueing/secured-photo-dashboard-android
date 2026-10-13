@@ -3,7 +3,7 @@ package com.photodashboard.app.upload
 /** The five steps shown after a capture. */
 enum class CaptureStep(val label: String) {
     TAKEN("Photo taken"),
-    SAVED("Saved to device"),
+    SAVED("Encrypted and saved"),
     CONNECTING("Connecting"),
     UPLOADING("Uploading"),
     FINISHED("Finished upload"),

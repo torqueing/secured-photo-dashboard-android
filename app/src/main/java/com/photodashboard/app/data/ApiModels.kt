@@ -113,6 +113,8 @@ data class PhotoDto(
     @param:Json(name = "altitude_m") val altitudeM: Double?,
     @param:Json(name = "accuracy_m") val accuracyM: Double?,
     @param:Json(name = "device_model") val deviceModel: String?,
+    /** 1 for sealed (.spd) photos; null for legacy plain JPEGs. */
+    @param:Json(name = "enc_version") val encVersion: Int? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -123,3 +125,67 @@ data class ApiErrorBody(val error: ApiErrorDetail?)
 
 @JsonClass(generateAdapter = true)
 data class ApiErrorDetail(val code: String?, val message: String?)
+
+// ---------------------------------------------------------------- S4: keys and sealed photos
+@JsonClass(generateAdapter = true)
+data class RecoveryKeyDto(
+    @param:Json(name = "key_id") val keyId: String,
+    @param:Json(name = "public_key_spki_b64") val publicKeySpkiB64: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class OrgKeyResponse(
+    @param:Json(name = "key_arn") val keyArn: String,
+    @param:Json(name = "public_key_spki_b64") val publicKeySpkiB64: String,
+    val recovery: RecoveryKeyDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class DeviceKeyRequest(
+    @param:Json(name = "public_key_spki_b64") val publicKeySpkiB64: String,
+    @param:Json(name = "attestation_chain_b64") val attestationChainB64: List<String>,
+)
+
+@JsonClass(generateAdapter = true)
+data class DeviceKeyResponse(@param:Json(name = "device_key_id") val deviceKeyId: String)
+
+@JsonClass(generateAdapter = true)
+data class SealedUploadUrlsRequest(
+    @param:Json(name = "photo_id") val photoId: String,
+    @param:Json(name = "photo_sha256_b64") val photoSha256B64: String,
+    @param:Json(name = "thumb_sha256_b64") val thumbSha256B64: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class UploadTarget(@param:Json(name = "s3_key") val s3Key: String, @param:Json(name = "upload_url") val uploadUrl: String)
+
+@JsonClass(generateAdapter = true)
+data class SealedUploadUrlsResponse(
+    @param:Json(name = "photo_id") val photoId: String,
+    val status: String,
+    val photo: UploadTarget,
+    val thumbnail: UploadTarget,
+)
+
+@JsonClass(generateAdapter = true)
+data class RegisterSealedRequest(
+    @param:Json(name = "photo_id") val photoId: String,
+    val sha256: String,
+    @param:Json(name = "signed_payload") val signedPayload: String,
+    val signature: String,
+    @param:Json(name = "device_key_id") val deviceKeyId: String,
+    @param:Json(name = "key_arn") val keyArn: String,
+    @param:Json(name = "wrapped_key") val wrappedKey: String,
+    @param:Json(name = "captured_at") val capturedAt: String,
+    val latitude: Double?,
+    val longitude: Double?,
+    @param:Json(name = "altitude_m") val altitudeM: Double?,
+    @param:Json(name = "accuracy_m") val accuracyM: Float?,
+    @param:Json(name = "bearing_deg") val bearingDeg: Float?,
+    @param:Json(name = "speed_mps") val speedMps: Float?,
+    @param:Json(name = "location_source") val locationSource: String?,
+    @param:Json(name = "device_make") val deviceMake: String?,
+    @param:Json(name = "device_model") val deviceModel: String?,
+    val width: Int?,
+    val height: Int?,
+)

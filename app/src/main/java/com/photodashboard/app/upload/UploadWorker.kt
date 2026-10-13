@@ -14,6 +14,8 @@ import androidx.work.workDataOf
 import com.photodashboard.app.PhotoDashboardApp
 import com.photodashboard.app.data.PhotoEntity
 import com.photodashboard.app.data.RegisterPhotoRequest
+import com.photodashboard.app.data.RegisterSealedRequest
+import com.photodashboard.app.data.SealedUploadUrlsRequest
 import com.photodashboard.app.data.UploadUrlRequest
 import com.photodashboard.app.data.apiMessage
 import okhttp3.MediaType.Companion.toMediaType
@@ -66,7 +68,77 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }
     }
 
+    /** S4: upload the two sealed .spd files with signed checksums, then register the seal. */
+    private suspend fun uploadSealed(start: PhotoEntity): PhotoEntity {
+        val api = container.api
+        val dao = container.db.photos()
+        val photoFile = File(requireNotNull(start.filePath) { "sealed photo missing" })
+        val thumbFile = File(requireNotNull(start.thumbPath) { "sealed thumbnail missing" })
+        dao.setStage(start.localId, UploadStage.CONNECTING, null)
+        container.repository.ensureDeviceKeyRegistered()
+        val photoSum = sha256B64(photoFile)
+        val thumbSum = sha256B64(thumbFile)
+        val urls = api.sealedUploadUrls(SealedUploadUrlsRequest(start.localId, photoSum, thumbSum))
+        var photo = start.copy(serverPhotoId = urls.photoId, s3Key = urls.photo.s3Key, stage = UploadStage.UPLOADING, progress = 0)
+        dao.update(photo)
+        if (urls.status == "uploaded") return photo
+
+        fun put(target: String, file: File, sum: String, onProgress: ((Int) -> Unit)?) {
+            val raw = file.asRequestBody(OCTET)
+            val body = if (onProgress != null) ProgressRequestBody(raw, onProgress) else raw
+            val req = Request.Builder().url(target).put(body)
+                .header("Content-Type", "application/octet-stream")
+                .header("x-amz-checksum-sha256", sum)
+                .build()
+            container.http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException("S3 PUT failed: HTTP ${resp.code}")
+            }
+        }
+        put(urls.thumbnail.uploadUrl, thumbFile, thumbSum, null)
+        put(urls.photo.uploadUrl, photoFile, photoSum) { percent ->
+            kotlinx.coroutines.runBlocking { dao.setStage(start.localId, UploadStage.UPLOADING, percent) }
+        }
+        api.registerSealed(
+            RegisterSealedRequest(
+                photoId = start.localId,
+                sha256 = requireNotNull(photo.sha256),
+                signedPayload = requireNotNull(photo.signedPayload),
+                signature = requireNotNull(photo.signature),
+                deviceKeyId = requireNotNull(photo.deviceKeyId),
+                keyArn = requireNotNull(photo.keyArn),
+                wrappedKey = requireNotNull(photo.orgWrappedKey),
+                capturedAt = requireNotNull(photo.takenAtIso),
+                latitude = photo.latitude,
+                longitude = photo.longitude,
+                altitudeM = photo.altitudeM,
+                accuracyM = photo.accuracyM,
+                bearingDeg = photo.bearingDeg,
+                speedMps = photo.speedMps,
+                locationSource = photo.locationProvider,
+                deviceMake = android.os.Build.MANUFACTURER,
+                deviceModel = android.os.Build.MODEL,
+                width = photo.width,
+                height = photo.height,
+            ),
+        )
+        return photo
+    }
+
+    private fun sha256B64(file: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return java.util.Base64.getEncoder().encodeToString(md.digest())
+    }
+
     private suspend fun upload(start: PhotoEntity): PhotoEntity {
+        if (start.sealed) return uploadSealed(start)
         val api = container.api
         val dao = container.db.photos()
         val file = File(requireNotNull(start.filePath) { "photo has no local file" })
@@ -121,6 +193,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_LOCAL_ID = "local_id"
         const val TAG_UPLOAD = "photo-upload"
         private val JPEG = "image/jpeg".toMediaType()
+        private val OCTET = "application/octet-stream".toMediaType()
 
         fun uniqueName(localId: String) = "upload-$localId"
 

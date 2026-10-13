@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -42,7 +43,14 @@ import java.util.Locale
 /** AND-11/12: image, capture time, coordinates, accuracy, map link, retry, delete. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PhotoDetailScreen(photo: PhotoEntity?, onBack: () -> Unit, onRetry: () -> Unit, onDelete: () -> Unit) {
+fun PhotoDetailScreen(
+    photo: PhotoEntity?,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+    onDelete: () -> Unit,
+    sealedLoader: (PhotoEntity, Boolean) -> (suspend () -> androidx.compose.ui.graphics.ImageBitmap?)? = { _, _ -> null },
+    unlockVersion: Int = 0,
+) {
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
     Scaffold(
@@ -59,10 +67,24 @@ fun PhotoDetailScreen(photo: PhotoEntity?, onBack: () -> Unit, onRetry: () -> Un
             Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            AsyncImage(
-                model = photo.filePath ?: photo.publicUrl, contentDescription = null,
-                contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(),
-            )
+            if (photo.sealed) {
+                SealedImage(
+                    loadKey = photo.localId to unlockVersion,
+                    load = sealedLoader(photo, false),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f),
+                    contentScale = ContentScale.Fit,
+                )
+                Text(
+                    if (photo.filePath != null) "Encrypted on this phone (sealed at capture)"
+                    else "Encrypted; open it in the web dashboard",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            } else {
+                AsyncImage(
+                    model = photo.filePath ?: photo.publicUrl, contentDescription = null,
+                    contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth(),
+                )
+            }
             StateBadge(photo.state)
             val offset = ZoneOffset.ofTotalSeconds(photo.utcOffsetMinutes * 60)
             Field("Captured", DisplayFormat.dateTime.format(Instant.ofEpochMilli(photo.capturedAt).atOffset(offset)))

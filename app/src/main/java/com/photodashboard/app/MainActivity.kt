@@ -1,7 +1,8 @@
 package com.photodashboard.app
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -45,12 +46,14 @@ sealed interface Screen {
     data class Detail(val localId: String) : Screen
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val vm: AppViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // No screenshots or recent-apps previews of photos (spec 8.3).
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
             val scheme = if (isSystemInDarkTheme()) darkColorScheme(primary = Color(0xFF60A5FA)) else lightColorScheme(primary = Color(0xFF2563EB))
             MaterialTheme(colorScheme = scheme) {
@@ -91,6 +94,11 @@ private fun App(vm: AppViewModel) {
 @Composable
 private fun SignedIn(vm: AppViewModel, displayName: String) {
     val stack = remember { mutableStateListOf(if (vm.splashPending) Screen.Splash else Screen.Home) }
+    val unlockVersion by vm.unlockVersion.collectAsStateWithLifecycle()
+    GalleryUnlockPrompt(vm)
+    // Local sealed photos decrypt with this phone's key; remote-only ones show a lock.
+    val sealedLoader: (com.photodashboard.app.data.PhotoEntity, Boolean) -> (suspend () -> androidx.compose.ui.graphics.ImageBitmap?)? =
+        { photo, thumb -> if ((if (thumb) photo.thumbPath else photo.filePath) == null) null else ({ vm.sealedImage(photo, thumb) }) }
     val captureStatus by vm.captureStatus.collectAsStateWithLifecycle()
     val photos by vm.photos.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
@@ -125,12 +133,13 @@ private fun SignedIn(vm: AppViewModel, displayName: String) {
             onCamera = { vm.clearCapture(); stack.add(Screen.Camera) },
             onRefresh = { vm.refresh() },
             onSignOut = { vm.signOut() },
+            sealedLoader = sealedLoader,
+            unlockVersion = unlockVersion,
         )
         Screen.Camera -> CameraScreen(
-            newFile = vm::newCaptureFile,
             locationFix = vm::locationFix,
             onTaken = vm::onPhotoTaken,
-            onCaptured = { file, at, fix -> vm.onCaptured(file, at, fix) },
+            onCaptured = { jpeg, rotation, at, fix -> vm.onCaptured(jpeg, rotation, at, fix) },
             onBack = { stack.removeAt(stack.lastIndex) },
             captureStatus = captureStatus,
             onGallery = { goTo(Screen.Home, Screen.Gallery) },
@@ -144,7 +153,39 @@ private fun SignedIn(vm: AppViewModel, displayName: String) {
                 onBack = { stack.removeAt(stack.lastIndex) },
                 onRetry = { vm.retry(screen.localId) },
                 onDelete = { vm.delete(screen.localId) { stack.removeAt(stack.lastIndex) } },
+                sealedLoader = sealedLoader,
+                unlockVersion = unlockVersion,
             )
         }
+    }
+}
+
+/** Fingerprint/PIN prompt that unlocks the photo storage key for 5 minutes (decision D2). */
+@Composable
+private fun GalleryUnlockPrompt(vm: AppViewModel) {
+    val needed by vm.unlockRequired.collectAsStateWithLifecycle()
+    val activity = androidx.activity.compose.LocalActivity.current as FragmentActivity
+    LaunchedEffect(needed) {
+        if (!needed) return@LaunchedEffect
+        val authenticators = if (android.os.Build.VERSION.SDK_INT >= 30) {
+            androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        } else {
+            androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        }
+        val info = androidx.biometric.BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock your photos")
+            .setSubtitle("Photos are encrypted on this phone")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+        androidx.biometric.BiometricPrompt(
+            activity,
+            androidx.core.content.ContextCompat.getMainExecutor(activity),
+            object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: androidx.biometric.BiometricPrompt.AuthenticationResult) = vm.onUnlocked()
+                override fun onAuthenticationError(code: Int, msg: CharSequence) = vm.onUnlockCancelled()
+            },
+        ).authenticate(info)
     }
 }

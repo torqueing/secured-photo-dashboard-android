@@ -49,6 +49,18 @@ interface PhotoApi {
 
     @DELETE("photos/{id}")
     suspend fun deletePhoto(@Path("id") id: String)
+
+    @GET("keys/public")
+    suspend fun orgKey(): OrgKeyResponse
+
+    @POST("devices/keys")
+    suspend fun registerDeviceKey(@Body body: DeviceKeyRequest): DeviceKeyResponse
+
+    @POST("photos/sealed/upload-urls")
+    suspend fun sealedUploadUrls(@Body body: SealedUploadUrlsRequest): SealedUploadUrlsResponse
+
+    @POST("photos/sealed")
+    suspend fun registerSealed(@Body body: RegisterSealedRequest): PhotoDto
 }
 
 object ApiFactory {

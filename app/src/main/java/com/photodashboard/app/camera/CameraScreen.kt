@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -57,7 +58,6 @@ import com.photodashboard.app.upload.CaptureStatus
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -70,10 +70,9 @@ private val PERMISSIONS = arrayOf(
 /** CameraX capture with lens switch and flash (AND-4); location requested on shutter (AND-5, AND-6). */
 @Composable
 fun CameraScreen(
-    newFile: () -> File,
     locationFix: suspend () -> GeoFix?,
     onTaken: () -> Unit,
-    onCaptured: (File, Long, GeoFix?) -> Unit,
+    onCaptured: (ByteArray, Int, Long, GeoFix?) -> Unit,
     onBack: () -> Unit,
     captureStatus: CaptureStatus?,
     onGallery: () -> Unit,
@@ -195,11 +194,11 @@ fun CameraScreen(
                         scope.launch {
                             try {
                                 val fix = async { if (locationGranted) runCatching { locationFix() }.getOrNull() else null }
-                                val file = newFile()
                                 val takenAt = System.currentTimeMillis()
-                                imageCapture.takePictureTo(file, context)
+                                // Spec 4.3 step 1: the JPEG arrives in memory and is never written as a file.
+                                val (jpeg, rotation) = imageCapture.takePictureToMemory(context)
                                 onTaken()
-                                onCaptured(file, takenAt, fix.await())
+                                onCaptured(jpeg, rotation, takenAt, fix.await())
                             } catch (e: Exception) {
                                 Log.e("CameraScreen", "capture failed", e)
                             } finally {
@@ -220,13 +219,22 @@ fun CameraScreen(
     }
 }
 
-private suspend fun ImageCapture.takePictureTo(file: File, context: android.content.Context) =
+/** Capture a JPEG straight into memory; returns the bytes and the rotation to apply. */
+private suspend fun ImageCapture.takePictureToMemory(context: android.content.Context): Pair<ByteArray, Int> =
     suspendCancellableCoroutine { cont ->
         takePicture(
-            ImageCapture.OutputFileOptions.Builder(file).build(),
             ContextCompat.getMainExecutor(context),
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) = cont.resume(Unit)
+            object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    try {
+                        val buffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
+                        cont.resume(bytes to image.imageInfo.rotationDegrees)
+                    } finally {
+                        image.close()
+                    }
+                }
+
                 override fun onError(exception: ImageCaptureException) = cont.resumeWithException(exception)
             },
         )

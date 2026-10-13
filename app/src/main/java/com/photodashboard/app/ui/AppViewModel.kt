@@ -135,6 +135,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun afterSignIn() {
         val s = container.session.current()
         if (s?.mustChangePassword == true || s?.mfaSetupRequired == true) return
+        repo.refreshOrgKey()
+        runCatching { repo.ensureDeviceKeyRegistered() }
         repo.resumePending()
         runCatching { repo.refreshFromServer() }
     }
@@ -148,7 +150,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         container.session.clear()
     }
 
-    fun refresh() = launchBusy { repo.refreshFromServer() }
+    fun refresh() = launchBusy {
+        repo.refreshOrgKey()
+        repo.refreshFromServer()
+    }
 
     /** Returns null on success, else the error to show in the dialog. */
     suspend fun changePassword(current: String, new: String): String? = try {
@@ -165,7 +170,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setWifiOnly(value: Boolean) = viewModelScope.launch { container.session.setWifiOnly(value) }
 
-    fun newCaptureFile(): File = repo.newCaptureFile()
+    /** The gallery is locked until fingerprint/PIN unlocks the storage key (decision D2). */
+    private val _unlockRequired = MutableStateFlow(false)
+    val unlockRequired = _unlockRequired.asStateFlow()
+
+    /** Bumped after an unlock so locked images retry. */
+    private val _unlockVersion = MutableStateFlow(0)
+    val unlockVersion = _unlockVersion.asStateFlow()
+    private val thumbCache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(200)
+
+    fun onUnlocked() {
+        _unlockRequired.value = false
+        _unlockVersion.value += 1
+    }
+
+    fun onUnlockCancelled() {
+        _unlockRequired.value = false
+    }
+
+    /** Decrypt and decode a sealed image; null while the gallery is locked (an unlock is requested). */
+    suspend fun sealedImage(photo: PhotoEntity, thumbnail: Boolean): androidx.compose.ui.graphics.ImageBitmap? {
+        if (thumbnail) thumbCache.get(photo.localId)?.let { return it }
+        return try {
+            val bytes = repo.decrypt(photo, thumbnail)
+            val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                com.photodashboard.app.ui.SealedImages.decode(bytes)
+            }
+            java.util.Arrays.fill(bytes, 0)
+            bitmap?.also { if (thumbnail) thumbCache.put(photo.localId, it) }
+        } catch (e: android.security.keystore.UserNotAuthenticatedException) {
+            _unlockRequired.value = true
+            null
+        } catch (e: java.security.InvalidKeyException) {
+            // Some versions report a locked key this way.
+            _unlockRequired.value = true
+            null
+        }
+    }
 
     suspend fun locationFix(): GeoFix? = container.location.fixForCapture()
 
@@ -194,9 +235,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _capture.value = null
     }
 
-    fun onCaptured(file: File, capturedAt: Long, fix: GeoFix?) = viewModelScope.launch {
+    fun onCaptured(jpeg: ByteArray, rotation: Int, capturedAt: Long, fix: GeoFix?) = viewModelScope.launch {
         try {
-            val photo = repo.onCaptured(file, capturedAt, fix)
+            val photo = repo.onCaptured(jpeg, rotation, capturedAt, fix)
             _capture.value = CaptureTracking(localId = photo.localId)
             if (fix == null) _message.value = "Saved without location"
         } catch (e: Exception) {

@@ -95,10 +95,12 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.retrofit)
     implementation(libs.tink.android)
+    implementation(libs.androidx.biometric)
     ksp(libs.androidx.room.compiler)
     ksp(libs.moshi.kotlin.codegen)
 
     testImplementation(libs.junit)
+    testImplementation(libs.metadata.extractor)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

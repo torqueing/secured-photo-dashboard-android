@@ -11,6 +11,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.photodashboard.app.crypto.DeviceKeys
+import com.photodashboard.app.crypto.OrgKey
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "session")
 
@@ -29,7 +31,7 @@ data class Session(
  * Session tokens and settings (AND-2, AND-14). The 15-minute access token and the rotating
  * refresh token are kept in DataStore; encrypting them with a Keystore key is part of S4.
  */
-class SessionStore(private val context: Context) {
+class SessionStore(private val context: Context, private val keys: DeviceKeys) {
     private object Keys {
         val token = stringPreferencesKey("token")
         val userId = longPreferencesKey("user_id")
@@ -40,7 +42,18 @@ class SessionStore(private val context: Context) {
         val mustChangePassword = booleanPreferencesKey("must_change_password")
         val mfaSetupRequired = booleanPreferencesKey("mfa_setup_required")
         val refreshToken = stringPreferencesKey("refresh_token")
+        val tokenEnc = stringPreferencesKey("token_enc")
+        val refreshTokenEnc = stringPreferencesKey("refresh_token_enc")
+        val orgKeyArn = stringPreferencesKey("org_key_arn")
+        val orgPublicKey = stringPreferencesKey("org_public_key")
+        val recoveryKeyId = stringPreferencesKey("recovery_key_id")
+        val recoveryPublicKey = stringPreferencesKey("recovery_public_key")
+        val registeredDeviceKey = stringPreferencesKey("registered_device_key")
     }
+
+    // Tokens are stored encrypted with a Keystore key; plain values from older versions are read once.
+    private fun readToken(p: Preferences, enc: Preferences.Key<String>, plain: Preferences.Key<String>): String? =
+        p[enc]?.let { keys.decryptToken(it) } ?: p[plain]
 
     @Volatile
     var cachedToken: String? = null
@@ -51,9 +64,9 @@ class SessionStore(private val context: Context) {
         private set
 
     val session: Flow<Session?> = context.dataStore.data.map { p ->
-        val token = p[Keys.token]
+        val token = readToken(p, Keys.tokenEnc, Keys.token)
         cachedToken = token
-        cachedRefreshToken = p[Keys.refreshToken]
+        cachedRefreshToken = readToken(p, Keys.refreshTokenEnc, Keys.refreshToken)
         if (token == null) null else Session(
             token, p[Keys.userId] ?: 0, p[Keys.email].orEmpty(), p[Keys.displayName].orEmpty(), p[Keys.orgId],
             p[Keys.mustChangePassword] ?: false, p[Keys.mfaSetupRequired] ?: false,
@@ -70,8 +83,10 @@ class SessionStore(private val context: Context) {
         cachedToken = access
         cachedRefreshToken = auth.refreshToken
         context.dataStore.edit {
-            it[Keys.token] = access
-            auth.refreshToken?.let { r -> it[Keys.refreshToken] = r }
+            it[Keys.tokenEnc] = keys.encryptToken(access)
+            it.remove(Keys.token)
+            it.remove(Keys.refreshToken)
+            auth.refreshToken?.let { r -> it[Keys.refreshTokenEnc] = keys.encryptToken(r) }
             it[Keys.userId] = user.id
             it[Keys.email] = user.email
             // Shown as "First Last".
@@ -88,11 +103,36 @@ class SessionStore(private val context: Context) {
         cachedToken = access
         cachedRefreshToken = refresh
         context.dataStore.edit {
-            if (it[Keys.token] != null) {
-                it[Keys.token] = access
-                it[Keys.refreshToken] = refresh
+            if (it[Keys.tokenEnc] != null || it[Keys.token] != null) {
+                it[Keys.tokenEnc] = keys.encryptToken(access)
+                it[Keys.refreshTokenEnc] = keys.encryptToken(refresh)
+                it.remove(Keys.token)
+                it.remove(Keys.refreshToken)
             }
         }
+    }
+
+    suspend fun orgKey(): OrgKey? = context.dataStore.data.first().let { p ->
+        val arn = p[Keys.orgKeyArn] ?: return@let null
+        OrgKey(arn, p[Keys.orgPublicKey] ?: return@let null, p[Keys.recoveryKeyId], p[Keys.recoveryPublicKey])
+    }
+
+    suspend fun saveOrgKey(key: OrgKeyResponse) {
+        context.dataStore.edit {
+            it[Keys.orgKeyArn] = key.keyArn
+            it[Keys.orgPublicKey] = key.publicKeySpkiB64
+            val r = key.recovery
+            if (r == null) { it.remove(Keys.recoveryKeyId); it.remove(Keys.recoveryPublicKey) } else {
+                it[Keys.recoveryKeyId] = r.keyId
+                it[Keys.recoveryPublicKey] = r.publicKeySpkiB64
+            }
+        }
+    }
+
+    suspend fun registeredDeviceKey(): String? = context.dataStore.data.first()[Keys.registeredDeviceKey]
+
+    suspend fun setRegisteredDeviceKey(id: String) {
+        context.dataStore.edit { it[Keys.registeredDeviceKey] = id }
     }
 
     suspend fun setMfaSetupRequired(value: Boolean) {
@@ -104,6 +144,8 @@ class SessionStore(private val context: Context) {
         cachedRefreshToken = null
         context.dataStore.edit {
             it.remove(Keys.token); it.remove(Keys.refreshToken); it.remove(Keys.userId); it.remove(Keys.email)
+            it.remove(Keys.tokenEnc); it.remove(Keys.refreshTokenEnc); it.remove(Keys.orgKeyArn); it.remove(Keys.orgPublicKey)
+            it.remove(Keys.recoveryKeyId); it.remove(Keys.recoveryPublicKey)
             it.remove(Keys.displayName); it.remove(Keys.orgId); it.remove(Keys.mustChangePassword)
             it.remove(Keys.mfaSetupRequired)
         }

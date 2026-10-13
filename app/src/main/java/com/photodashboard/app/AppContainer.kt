@@ -1,6 +1,7 @@
 package com.photodashboard.app
 
 import android.content.Context
+import com.photodashboard.app.crypto.DeviceKeys
 import com.photodashboard.app.data.ApiFactory
 import com.photodashboard.app.data.PhotoApi
 import com.photodashboard.app.data.PhotoDb
@@ -11,7 +12,8 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 
 class AppContainer(context: Context) {
-    val session = SessionStore(context)
+    val deviceKeys = DeviceKeys(context)
+    val session = SessionStore(context, deviceKeys)
     val http: OkHttpClient = ApiFactory.httpClient()
     val api: PhotoApi = ApiFactory.create(
         BuildConfig.API_BASE_URL.ifBlank { "https://api.invalid/v1" },
@@ -31,6 +33,6 @@ class AppContainer(context: Context) {
         },
     )
     val db = PhotoDb.create(context)
-    val repository = PhotoRepository(context, db, api, session)
+    val repository = PhotoRepository(context, db, api, session, deviceKeys)
     val location = LocationSource(context)
 }

@@ -50,6 +50,18 @@ data class PhotoEntity(
     val stage: UploadStage? = null,
     /** Bytes sent during [UploadStage.UPLOADING], 0..100. */
     val progress: Int? = null,
+    /** S4: the photo is stored only as encrypted .spd files (filePath = photo, thumbPath = thumbnail). */
+    val sealed: Boolean = false,
+    val thumbPath: String? = null,
+    val takenAtIso: String? = null,
+    val sha256: String? = null,
+    val signedPayload: String? = null,
+    val signature: String? = null,
+    val deviceKeyId: String? = null,
+    val keyArn: String? = null,
+    val orgWrappedKey: String? = null,
+    /** The photo key wrapped for this phone's storage key (never uploaded). */
+    val deviceWrappedKey: String? = null,
 )
 
 class Converters {
@@ -99,7 +111,7 @@ interface PhotoDao {
     suspend fun setStage(id: String, stage: UploadStage?, progress: Int?)
 }
 
-@Database(entities = [PhotoEntity::class], version = 2, exportSchema = true)
+@Database(entities = [PhotoEntity::class], version = 3, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PhotoDb : RoomDatabase() {
     abstract fun photos(): PhotoDao
@@ -112,7 +124,17 @@ abstract class PhotoDb : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photos ADD COLUMN sealed INTEGER NOT NULL DEFAULT 0")
+                for (col in listOf("thumbPath", "takenAtIso", "sha256", "signedPayload", "signature", "deviceKeyId",
+                    "keyArn", "orgWrappedKey", "deviceWrappedKey")) {
+                    db.execSQL("ALTER TABLE photos ADD COLUMN $col TEXT")
+                }
+            }
+        }
+
         fun create(context: Context): PhotoDb =
-            Room.databaseBuilder(context, PhotoDb::class.java, "photos.db").addMigrations(MIGRATION_1_2).build()
+            Room.databaseBuilder(context, PhotoDb::class.java, "photos.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

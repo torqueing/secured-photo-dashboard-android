@@ -1,10 +1,12 @@
 package com.photodashboard.app.data
 
-import android.content.ContentValues
 import android.content.Context
-import android.provider.MediaStore
+import android.util.Base64
+import com.photodashboard.app.crypto.DeviceKeys
+import com.photodashboard.app.crypto.OrgKey
+import com.photodashboard.app.crypto.PhotoSealer
+import com.photodashboard.app.crypto.SpdFormat
 import android.util.Log
-import com.photodashboard.app.exif.ExifWriter
 import com.photodashboard.app.exif.GeoFix
 import com.photodashboard.app.upload.UploadState
 import com.photodashboard.app.upload.UploadStateMachine
@@ -24,57 +26,88 @@ class PhotoRepository(
     private val db: PhotoDb,
     private val api: PhotoApi,
     private val session: SessionStore,
+    private val deviceKeys: DeviceKeys,
 ) {
     private val dao get() = db.photos()
 
-    fun photosDir(): File = File(context.filesDir, "photos").apply { mkdirs() }
+    private val sealer by lazy { PhotoSealer(deviceKeys, File(context.filesDir, "sealed")) }
 
-    fun newCaptureFile(): File = File(photosDir(), "${UUID.randomUUID()}.jpg")
-
-    /** After CameraX saved [file]: write EXIF, record it, copy to MediaStore, queue upload (AND-7..9). */
-    suspend fun onCaptured(file: File, capturedAt: Long, fix: GeoFix?): PhotoEntity = withContext(Dispatchers.IO) {
-        val user = requireNotNull(session.current()) { "not signed in" }
-        val offset = ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(capturedAt))
-        ExifWriter.write(file, capturedAt, offset, fix)
-        val dims = ExifWriter.dimensions(file)
-        val photo = PhotoEntity(
-            localId = file.nameWithoutExtension,
-            userId = user.userId,
-            filePath = file.absolutePath,
-            mediaStoreUri = runCatching { copyToMediaStore(file) }.onFailure { Log.w(TAG, "MediaStore copy failed", it) }.getOrNull(),
-            capturedAt = capturedAt,
-            utcOffsetMinutes = offset.totalSeconds / 60,
-            latitude = fix?.latitude,
-            longitude = fix?.longitude,
-            altitudeM = fix?.altitudeM,
-            accuracyM = fix?.accuracyM,
-            bearingDeg = fix?.bearingDeg,
-            speedMps = fix?.speedMps,
-            locationProvider = fix?.provider,
-            noLocation = fix == null,
-            width = dims.width,
-            height = dims.height,
-            sizeBytes = file.length(),
-            state = UploadStateMachine.next(UploadState.PENDING, UploadStateMachine.Event.Enqueued),
-        )
-        // EXIF is on disk before the row exists, so the uploaded object always carries location (AND-8).
-        dao.upsert(photo)
-        UploadWorker.enqueue(context, photo.localId, session.wifiOnly.first())
-        photo
+    /** Fetch and cache the organisation public key photos are wrapped for (needs the network). */
+    suspend fun refreshOrgKey(): OrgKey? = withContext(Dispatchers.IO) {
+        runCatching { session.saveOrgKey(api.orgKey()) }.onFailure { Log.w(TAG, "org key refresh failed", it) }
+        session.orgKey()
     }
 
-    private fun copyToMediaStore(file: File): String? {
-        val resolver = context.contentResolver
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SecuredPhotoDashboard")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+    /** Register this phone's signing key with the server once (spec 8.3 key attestation). */
+    suspend fun ensureDeviceKeyRegistered(): String = withContext(Dispatchers.IO) {
+        val id = deviceKeys.deviceKeyId()
+        if (session.registeredDeviceKey() != id) {
+            val res = api.registerDeviceKey(
+                DeviceKeyRequest(Base64.encodeToString(deviceKeys.signingPublicKeySpki(), Base64.NO_WRAP), deviceKeys.attestationChainB64()),
+            )
+            check(res.deviceKeyId == id) { "server derived a different device key id" }
+            session.setRegisteredDeviceKey(id)
         }
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
-        resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
-        return uri.toString()
+        id
+    }
+
+    /**
+     * Spec 4.3: seal the in-memory JPEG (EXIF, thumbnail, signature, encryption) and queue the
+     * upload. Only the encrypted .spd files are written; nothing goes to the shared gallery.
+     */
+    suspend fun onCaptured(jpeg: ByteArray, rotationDegrees: Int, capturedAt: Long, fix: GeoFix?): PhotoEntity =
+        withContext(Dispatchers.Default) {
+            val user = requireNotNull(session.current()) { "not signed in" }
+            val org = session.orgKey() ?: refreshOrgKey()
+                ?: error("The encryption key hasn't been downloaded yet; connect to the internet once and try again")
+            val photoId = UUID.randomUUID().toString()
+            val sealed = sealer.seal(photoId, jpeg, rotationDegrees, capturedAt, fix, org)
+            val offset = ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(capturedAt))
+            val photo = PhotoEntity(
+                localId = photoId,
+                userId = user.userId,
+                filePath = sealed.photoFile.absolutePath,
+                mediaStoreUri = null,
+                capturedAt = capturedAt,
+                utcOffsetMinutes = offset.totalSeconds / 60,
+                latitude = fix?.latitude,
+                longitude = fix?.longitude,
+                altitudeM = fix?.altitudeM,
+                accuracyM = fix?.accuracyM,
+                bearingDeg = fix?.bearingDeg,
+                speedMps = fix?.speedMps,
+                locationProvider = fix?.provider,
+                noLocation = fix == null,
+                width = sealed.width,
+                height = sealed.height,
+                sizeBytes = sealed.sizeBytes,
+                state = UploadStateMachine.next(UploadState.PENDING, UploadStateMachine.Event.Enqueued),
+                serverPhotoId = photoId,
+                sealed = true,
+                thumbPath = sealed.thumbFile.absolutePath,
+                takenAtIso = sealed.takenAt,
+                sha256 = sealed.sha256,
+                signedPayload = sealed.signedPayload,
+                signature = sealed.signature,
+                deviceKeyId = sealed.deviceKeyId,
+                keyArn = sealed.keyArn,
+                orgWrappedKey = sealed.orgWrappedKey,
+                deviceWrappedKey = sealed.deviceWrappedKey,
+            )
+            dao.upsert(photo)
+            UploadWorker.enqueue(context, photo.localId, session.wifiOnly.first())
+            photo
+        }
+
+    /** Decrypt a sealed photo or its thumbnail in memory. Throws UserNotAuthenticatedException when locked. */
+    suspend fun decrypt(photo: PhotoEntity, thumbnail: Boolean): ByteArray = withContext(Dispatchers.IO) {
+        val path = requireNotNull(if (thumbnail) photo.thumbPath else photo.filePath) { "no local copy" }
+        val dek = deviceKeys.unwrapForDevice(requireNotNull(photo.deviceWrappedKey))
+        try {
+            SpdFormat.open(File(path).readBytes(), dek).second
+        } finally {
+            java.util.Arrays.fill(dek, 0)
+        }
     }
 
     /** Merge the server's list into Room so photos uploaded elsewhere show too (AND-10). */
@@ -99,6 +132,7 @@ class PhotoRepository(
                         accuracyM = p.accuracyM?.toFloat(), bearingDeg = null, speedMps = null, locationProvider = null,
                         noLocation = p.latitude == null, width = null, height = null, sizeBytes = null,
                         state = UploadState.REMOTE, serverPhotoId = p.id, s3Key = p.s3Key, publicUrl = p.publicUrl,
+                        sealed = p.encVersion != null,
                     ),
                 )
             }
@@ -136,6 +170,7 @@ class PhotoRepository(
             }
         }
         photo.filePath?.let { File(it).delete() }
+        photo.thumbPath?.let { File(it).delete() }
         photo.mediaStoreUri?.let { runCatching { context.contentResolver.delete(android.net.Uri.parse(it), null, null) } }
         dao.delete(localId)
     }

@@ -56,6 +56,8 @@ fun GalleryScreen(
     onCamera: () -> Unit,
     onRefresh: () -> Unit,
     onSignOut: () -> Unit,
+    sealedLoader: (PhotoEntity, Boolean) -> (suspend () -> androidx.compose.ui.graphics.ImageBitmap?)? = { _, _ -> null },
+    unlockVersion: Int = 0,
 ) {
     var menu by remember { mutableStateOf(false) }
     Scaffold(
@@ -97,7 +99,11 @@ fun GalleryScreen(
             ) {
                 items(photos, key = { it.localId }) { photo ->
                     Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(6.dp)).clickable { onOpen(photo) }) {
-                        AsyncImage(
+                        if (photo.sealed) SealedImage(
+                            loadKey = photo.localId to unlockVersion,
+                            load = sealedLoader(photo, true),
+                            modifier = Modifier.fillMaxSize(),
+                        ) else AsyncImage(
                             model = photo.filePath ?: photo.publicUrl,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
