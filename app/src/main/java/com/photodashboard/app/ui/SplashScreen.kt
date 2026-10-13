@@ -52,7 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 const val TAGLINE = "Cryptographically sealed at point of capture"
-private const val SPLASH_MS = 2_600L
+private const val SPLASH_MS = 3_600L
 
 /** Animated splash after sign-in: logo pops in, a seal ring draws round it, the tagline rises. Tap to skip. */
 @Composable

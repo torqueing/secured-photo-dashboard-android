@@ -57,7 +57,7 @@ class NewScreensTest {
         compose.onNodeWithText(TAGLINE).assertExists()
         compose.onNodeWithText("Photo Dashboard").assertExists()
         save("1-splash")
-        compose.mainClock.advanceTimeBy(1_500)
+        compose.mainClock.advanceTimeBy(2_500)
         compose.waitForIdle()
         assertTrue(done)
     }
