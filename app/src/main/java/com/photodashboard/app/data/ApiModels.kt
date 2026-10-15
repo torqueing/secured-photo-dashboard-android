@@ -81,6 +81,21 @@ data class UserDto(
     @param:Json(name = "totp_enabled") val totpEnabled: Boolean = false,
     /** password_change_required, mfa_setup_required, or null when the account is ready. */
     @param:Json(name = "account_action") val accountAction: String? = null,
+    @param:Json(name = "created_at") val createdAt: String? = null,
+)
+
+/** GET me/stats: the signed-in user's own numbers (home and Account Settings screens). */
+@JsonClass(generateAdapter = true)
+data class MyStats(
+    @param:Json(name = "photos_today") val photosToday: Int = 0,
+    @param:Json(name = "photos_week") val photosWeek: Int = 0,
+    @param:Json(name = "photos_all") val photosAll: Int = 0,
+    val geotagged: Int = 0,
+    @param:Json(name = "storage_bytes") val storageBytes: Long = 0,
+    @param:Json(name = "last_upload_at") val lastUploadAt: String? = null,
+    /** Null until video capture exists. */
+    val videos: Int? = null,
+    @param:Json(name = "sessions_active") val sessionsActive: Int = 0,
 )
 
 @JsonClass(generateAdapter = true)

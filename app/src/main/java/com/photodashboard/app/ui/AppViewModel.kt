@@ -11,6 +11,8 @@ import com.photodashboard.app.data.AuthResponse
 import com.photodashboard.app.data.EmailVerifyRequest
 import com.photodashboard.app.data.MfaTokenRequest
 import com.photodashboard.app.data.MfaVerifyRequest
+import com.photodashboard.app.data.MyStats
+import com.photodashboard.app.data.UserDto
 import com.photodashboard.app.data.VerifyTokenRequest
 import com.photodashboard.app.data.PhotoEntity
 import com.photodashboard.app.data.RegisterRequest
@@ -179,6 +181,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         UploadWorker.cancelAll(getApplication())
         runCatching { container.api.logout() }
         container.session.clear()
+    }
+
+    /** Account details and the user's numbers from the server (home and Account Settings). */
+    private val _account = MutableStateFlow<UserDto?>(null)
+    val account: StateFlow<UserDto?> = _account.asStateFlow()
+    private val _stats = MutableStateFlow<MyStats?>(null)
+    val stats: StateFlow<MyStats?> = _stats.asStateFlow()
+
+    /** Quietly refresh; offline the screens fall back to what this phone knows. */
+    fun loadAccount() = viewModelScope.launch {
+        runCatching { _account.value = container.api.me() }
+        runCatching { _stats.value = container.api.myStats(java.time.ZoneId.systemDefault().id) }
     }
 
     fun refresh() = launchBusy {

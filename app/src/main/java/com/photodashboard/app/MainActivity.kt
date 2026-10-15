@@ -32,6 +32,7 @@ import com.photodashboard.app.ui.AppViewModel
 import com.photodashboard.app.ui.AuthScreen
 import com.photodashboard.app.ui.ForcedPasswordScreen
 import com.photodashboard.app.ui.GalleryScreen
+import com.photodashboard.app.ui.AccountScreen
 import com.photodashboard.app.ui.HomeScreen
 import com.photodashboard.app.ui.MfaSetupRequiredScreen
 import com.photodashboard.app.ui.SplashScreen
@@ -43,6 +44,7 @@ sealed interface Screen {
     data object Home : Screen
     data object Gallery : Screen
     data object Camera : Screen
+    data object Account : Screen
     data class Detail(val localId: String) : Screen
 }
 
@@ -88,7 +90,7 @@ private fun App(vm: AppViewModel) {
                 when {
                     s.session.mustChangePassword -> ForcedPasswordScreen(vm::changePassword, onSignOut = { vm.signOut() })
                     s.session.mfaSetupRequired -> MfaSetupRequiredScreen(onSignOut = { vm.signOut() })
-                    else -> SignedIn(vm, s.session.displayName)
+                    else -> SignedIn(vm, s.session.displayName, s.session.email)
                 }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -96,7 +98,7 @@ private fun App(vm: AppViewModel) {
 }
 
 @Composable
-private fun SignedIn(vm: AppViewModel, displayName: String) {
+private fun SignedIn(vm: AppViewModel, displayName: String, email: String) {
     val stack = remember { mutableStateListOf(if (vm.splashPending) Screen.Splash else Screen.Home) }
     val unlockVersion by vm.unlockVersion.collectAsStateWithLifecycle()
     GalleryUnlockPrompt(vm)
@@ -106,6 +108,7 @@ private fun SignedIn(vm: AppViewModel, displayName: String) {
     val captureStatus by vm.captureStatus.collectAsStateWithLifecycle()
     val photos by vm.photos.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refresh() }
     // Predictive back: the system animation is driven by OnBackPressedDispatcher.
     BackHandler(enabled = stack.size > 1) { stack.removeAt(stack.lastIndex) }
@@ -120,14 +123,31 @@ private fun SignedIn(vm: AppViewModel, displayName: String) {
             vm.splashPending = false
             goTo(Screen.Home)
         })
-        Screen.Home -> HomeScreen(
-            displayName = displayName,
-            photos = photos,
-            onCamera = { vm.clearCapture(); stack.add(Screen.Camera) },
-            onGallery = { stack.add(Screen.Gallery) },
-            onSignOut = { vm.signOut() },
-            onChangePassword = vm::changePassword,
-        )
+        Screen.Home -> {
+            LaunchedEffect(Unit) { vm.loadAccount() }
+            HomeScreen(
+                displayName = displayName,
+                photos = photos,
+                stats = stats,
+                onCamera = { vm.clearCapture(); stack.add(Screen.Camera) },
+                onGallery = { stack.add(Screen.Gallery) },
+                onAccount = { stack.add(Screen.Account) },
+            )
+        }
+        Screen.Account -> {
+            LaunchedEffect(Unit) { vm.loadAccount() }
+            val account by vm.account.collectAsStateWithLifecycle()
+            AccountScreen(
+                displayName = displayName,
+                email = email,
+                account = account,
+                stats = stats,
+                photos = photos,
+                onBack = { stack.removeAt(stack.lastIndex) },
+                onChangePassword = vm::changePassword,
+                onSignOut = { vm.signOut() },
+            )
+        }
         Screen.Gallery -> GalleryScreen(
             displayName = displayName,
             photos = photos,

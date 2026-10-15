@@ -44,6 +44,9 @@ interface PhotoApi {
     @GET("me")
     suspend fun me(): UserDto
 
+    @GET("me/stats")
+    suspend fun myStats(@Query("tz") timeZone: String): MyStats
+
     @POST("auth/change-password")
     suspend fun changePassword(@Body body: ChangePasswordRequest): ChangePasswordResponse
 
