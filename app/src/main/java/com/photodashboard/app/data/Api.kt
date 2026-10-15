@@ -29,6 +29,15 @@ interface PhotoApi {
     @POST("auth/mfa/verify")
     suspend fun verifyMfa(@Body body: MfaVerifyRequest): AuthResponse
 
+    @POST("auth/mfa/email-code")
+    suspend fun sendMfaEmailCode(@Body body: MfaTokenRequest): CodeSentResponse
+
+    @POST("auth/email/verify")
+    suspend fun verifyEmail(@Body body: EmailVerifyRequest): AuthResponse
+
+    @POST("auth/email/resend")
+    suspend fun resendVerification(@Body body: VerifyTokenRequest): CodeSentResponse
+
     @POST("auth/logout")
     suspend fun logout()
 

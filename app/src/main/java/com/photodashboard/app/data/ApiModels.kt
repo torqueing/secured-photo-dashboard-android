@@ -24,6 +24,29 @@ data class MfaVerifyRequest(
     @param:Json(name = "mfa_token") val mfaToken: String,
     val code: String,
     @param:Json(name = "device_label") val deviceLabel: String? = null,
+    /** "totp" (authenticator app) or "email" (emailed code). */
+    val method: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class MfaTokenRequest(@param:Json(name = "mfa_token") val mfaToken: String)
+
+@JsonClass(generateAdapter = true)
+data class EmailVerifyRequest(
+    @param:Json(name = "verify_token") val verifyToken: String,
+    val code: String,
+    @param:Json(name = "device_label") val deviceLabel: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class VerifyTokenRequest(@param:Json(name = "verify_token") val verifyToken: String)
+
+@JsonClass(generateAdapter = true)
+data class CodeSentResponse(
+    /** Masked address, e.g. g•••@gmail.com. */
+    val email: String? = null,
+    @param:Json(name = "expires_in") val expiresIn: Int = 600,
+    @param:Json(name = "resend_after") val resendAfter: Int = 60,
 )
 
 @JsonClass(generateAdapter = true)
@@ -65,9 +88,16 @@ data class AuthResponse(
     @param:Json(name = "access_token") val accessToken: String? = null,
     @param:Json(name = "refresh_token") val refreshToken: String? = null,
     val user: UserDto? = null,
-    /** Sign-in needs a second step: post [mfaToken] and a TOTP code to auth/mfa/verify. */
+    /** Sign-in needs a second step: post [mfaToken] and a code to auth/mfa/verify. */
     @param:Json(name = "mfa_required") val mfaRequired: Boolean = false,
     @param:Json(name = "mfa_token") val mfaToken: String? = null,
+    /** Which second steps are allowed: "totp" and/or "email". */
+    val methods: List<String>? = null,
+    /** New account: confirm the address with the emailed code (auth/email/verify). */
+    @param:Json(name = "verification_required") val verificationRequired: Boolean = false,
+    @param:Json(name = "verify_token") val verifyToken: String? = null,
+    /** Masked address the code went (or will go) to. */
+    val email: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

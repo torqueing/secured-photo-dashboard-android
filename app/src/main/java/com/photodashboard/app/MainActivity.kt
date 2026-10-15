@@ -77,8 +77,12 @@ private fun App(vm: AppViewModel) {
         when (val s = session) {
             SessionState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             SessionState.SignedOut -> {
-                val mfaPending by vm.mfaPending.collectAsStateWithLifecycle()
-                AuthScreen(busy, vm.apiConfigured, vm::signIn, vm::register, mfaPending, vm::verifyMfa, vm::cancelMfa)
+                val challenge by vm.challenge.collectAsStateWithLifecycle()
+                AuthScreen(
+                    busy, vm.apiConfigured, vm::signIn, vm::register,
+                    challenge = challenge, onAnswer = vm::answerChallenge,
+                    onSendEmailCode = vm::sendEmailCode, onCancelChallenge = vm::cancelChallenge,
+                )
             }
             is SessionState.SignedIn ->
                 when {

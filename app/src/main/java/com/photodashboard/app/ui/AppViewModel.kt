@@ -7,7 +7,11 @@ import com.photodashboard.app.BuildConfig
 import com.photodashboard.app.PhotoDashboardApp
 import com.photodashboard.app.data.ChangePasswordRequest
 import com.photodashboard.app.data.LoginRequest
+import com.photodashboard.app.data.AuthResponse
+import com.photodashboard.app.data.EmailVerifyRequest
+import com.photodashboard.app.data.MfaTokenRequest
 import com.photodashboard.app.data.MfaVerifyRequest
+import com.photodashboard.app.data.VerifyTokenRequest
 import com.photodashboard.app.data.PhotoEntity
 import com.photodashboard.app.data.RegisterRequest
 import com.photodashboard.app.data.Session
@@ -31,6 +35,20 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 data class CaptureTracking(val localId: String?)
+
+/** A code the user must enter before they are signed in. */
+data class AuthChallenge(
+    val kind: Kind,
+    val token: String,
+    /** "totp" and/or "email". */
+    val methods: List<String>,
+    /** Masked address, e.g. g•••@gmail.com. */
+    val email: String?,
+    val emailSent: Boolean = false,
+    val sentAt: Long = if (emailSent) System.currentTimeMillis() else 0L,
+) {
+    enum class Kind { SECOND_STEP, VERIFY_EMAIL }
+}
 
 sealed interface SessionState {
     data object Loading : SessionState
@@ -82,36 +100,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Set while sign-in waits for a two-factor code. */
-    private val _mfaToken = MutableStateFlow<String?>(null)
-    val mfaPending: StateFlow<Boolean> = MutableStateFlow(false).also { flag ->
-        viewModelScope.launch { _mfaToken.collect { flag.value = it != null } }
+    /** Set while sign-in waits for a code: a second step, or confirming a new account's email. */
+    private val _challenge = MutableStateFlow<AuthChallenge?>(null)
+    val challenge: StateFlow<AuthChallenge?> = _challenge.asStateFlow()
+
+    /** A session, or the next step the server asks for. */
+    private suspend fun handleAuth(res: AuthResponse) {
+        when {
+            res.verificationRequired -> _challenge.value = AuthChallenge(AuthChallenge.Kind.VERIFY_EMAIL, res.verifyToken!!, listOf("email"), res.email, emailSent = true)
+            res.mfaRequired -> _challenge.value = AuthChallenge(AuthChallenge.Kind.SECOND_STEP, res.mfaToken!!, res.methods ?: listOf("totp"), res.email)
+            else -> {
+                _challenge.value = null
+                container.session.save(res)
+                afterSignIn()
+            }
+        }
     }
 
     fun signIn(email: String, password: String) = launchBusy {
-        val res = container.api.login(LoginRequest(email.trim(), password, android.os.Build.MODEL))
-        if (res.mfaRequired) {
-            _mfaToken.value = res.mfaToken
-            return@launchBusy
-        }
-        container.session.save(res)
-        afterSignIn()
+        handleAuth(container.api.login(LoginRequest(email.trim(), password, android.os.Build.MODEL)))
     }
 
-    fun verifyMfa(code: String) = launchBusy {
-        val token = _mfaToken.value ?: return@launchBusy
+    /** Ask for an emailed code (second step), or a new one (email confirmation). */
+    fun sendEmailCode() = launchBusy {
+        val c = _challenge.value ?: return@launchBusy
+        val sent = if (c.kind == AuthChallenge.Kind.VERIFY_EMAIL) container.api.resendVerification(VerifyTokenRequest(c.token))
+        else container.api.sendMfaEmailCode(MfaTokenRequest(c.token))
+        _challenge.value = c.copy(emailSent = true, email = sent.email ?: c.email, sentAt = System.currentTimeMillis())
+    }
+
+    fun answerChallenge(code: String, method: String) = launchBusy {
+        val c = _challenge.value ?: return@launchBusy
         try {
-            container.session.save(container.api.verifyMfa(MfaVerifyRequest(token, code.trim(), android.os.Build.MODEL)))
-            _mfaToken.value = null
-            afterSignIn()
+            handleAuth(
+                if (c.kind == AuthChallenge.Kind.VERIFY_EMAIL) container.api.verifyEmail(EmailVerifyRequest(c.token, code.trim(), android.os.Build.MODEL))
+                else container.api.verifyMfa(MfaVerifyRequest(c.token, code.trim(), android.os.Build.MODEL, method)),
+            )
         } catch (e: retrofit2.HttpException) {
-            if (e.code() == 401 && e.apiMessage().contains("expired")) _mfaToken.value = null
+            if (e.code() == 401 && e.apiMessage().contains("expired")) _challenge.value = null
             throw e
         }
     }
 
-    fun cancelMfa() {
-        _mfaToken.value = null
+    fun cancelChallenge() {
+        _challenge.value = null
     }
 
     fun register(form: RegisterForm) = launchBusy {
@@ -128,8 +160,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 lastName = form.lastName.trim(),
             ),
         )
-        container.session.save(auth)
-        afterSignIn()
+        handleAuth(auth)
     }
 
     private suspend fun afterSignIn() {
