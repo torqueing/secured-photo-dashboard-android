@@ -12,7 +12,7 @@ plugins {
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
-val defaultApiBaseUrl = "https://d2vwqhojo02h5x.cloudfront.net/v1"
+val defaultApiBaseUrl = "https://app.securecaptures.com/v1"
 val apiBaseUrl: String = (
     System.getenv("API_BASE_URL")?.takeIf { it.isNotBlank() }
         ?: localProps.getProperty("api.base.url")?.takeIf { it.isNotBlank() }
