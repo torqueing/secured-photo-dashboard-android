@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,9 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -74,24 +73,26 @@ fun HomeScreen(
     onCamera: () -> Unit,
     onGallery: () -> Unit,
     onAccount: () -> Unit,
+    onMap: () -> Unit,
 ) {
     val counts = PhotoCounts.of(stats, photos)
     val parts = displayName.split(" ").filter { it.isNotBlank() }
     val shortName = if (parts.size > 1) "${parts.first()} ${parts.last().first()}." else displayName
     GlassBackground {
+        // Fits the screen: the two rows of boxes share whatever height is left.
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
                 InitialsAvatar(displayName)
                 Column(Modifier.padding(start = 16.dp)) {
                     Text("Welcome back", color = Glass.muted, fontSize = 15.sp)
                     Text(shortName, color = Glass.text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                HomeBox("Photos", "Sealed at capture", Icons.Outlined.CameraAlt, Modifier.weight(1f), onCamera, "Open the camera") {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeBox("Take Photo", "Sealed at capture", Icons.Outlined.CameraAlt, Modifier.weight(1f), onCamera, "Open the camera") {
                     StatLine("Today", counts.today)
                     StatLine("This week", counts.week)
                     StatLine("All time", counts.all, last = true)
@@ -100,12 +101,12 @@ fun HomeScreen(
                     GlassPill("Coming soon")
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HomeBox("Gallery", "${counts.all} verified items", Icons.Outlined.Collections, Modifier.weight(1f), onGallery, "Open the gallery") {
                     ThumbStack(counts.all)
                 }
-                HomeBox("Maps", "${counts.geotagged} geotagged", Icons.Outlined.Map, Modifier.weight(1f)) {
-                    GlassPill("Coming soon")
+                HomeBox("Maps", "${counts.geotagged} geotagged", Icons.Outlined.Map, Modifier.weight(1f), onMap, "Open the map") {
+                    GlassPill("View pins")
                 }
             }
             Row(
@@ -133,16 +134,16 @@ private fun HomeBox(
     openLabel: String? = null,
     content: @Composable () -> Unit,
 ) {
-    Column(modifier.height(268.dp).glass(RoundedCornerShape(28.dp), onClick).padding(18.dp)) {
+    Column(modifier.fillMaxHeight().glass(RoundedCornerShape(28.dp), onClick).padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Icon(icon, null, tint = Color.White, modifier = Modifier.size(32.dp))
             Spacer(Modifier.weight(1f))
             if (onClick != null) GlassCircle(Icons.Outlined.OpenInFull, openLabel, size = 42.dp, onClick = onClick)
         }
         Spacer(Modifier.weight(1f))
-        Text(title, color = Glass.text, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = Glass.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(subtitle, color = Glass.muted, fontSize = 14.sp)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         content()
     }
 }

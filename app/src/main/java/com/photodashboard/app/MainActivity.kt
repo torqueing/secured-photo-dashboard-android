@@ -34,6 +34,7 @@ import com.photodashboard.app.ui.ForcedPasswordScreen
 import com.photodashboard.app.ui.GalleryScreen
 import com.photodashboard.app.ui.AccountScreen
 import com.photodashboard.app.ui.HomeScreen
+import com.photodashboard.app.ui.MapScreen
 import com.photodashboard.app.ui.MfaSetupRequiredScreen
 import com.photodashboard.app.ui.SplashScreen
 import com.photodashboard.app.ui.PhotoDetailScreen
@@ -45,6 +46,7 @@ sealed interface Screen {
     data object Gallery : Screen
     data object Camera : Screen
     data object Account : Screen
+    data object Map : Screen
     data class Detail(val localId: String) : Screen
 }
 
@@ -132,8 +134,14 @@ private fun SignedIn(vm: AppViewModel, displayName: String, email: String) {
                 onCamera = { vm.clearCapture(); stack.add(Screen.Camera) },
                 onGallery = { stack.add(Screen.Gallery) },
                 onAccount = { stack.add(Screen.Account) },
+                onMap = { stack.add(Screen.Map) },
             )
         }
+        Screen.Map -> MapScreen(
+            photos = photos,
+            onOpen = { stack.add(Screen.Detail(it.localId)) },
+            onBack = { stack.removeAt(stack.lastIndex) },
+        )
         Screen.Account -> {
             LaunchedEffect(Unit) { vm.loadAccount() }
             val account by vm.account.collectAsStateWithLifecycle()

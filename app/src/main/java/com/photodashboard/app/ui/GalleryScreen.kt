@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,10 +61,18 @@ fun GalleryScreen(
     unlockVersion: Int = 0,
 ) {
     var menu by remember { mutableStateOf(false) }
+    // Same glass look as the home and Account Settings screens.
+    GlassBackground {
     Scaffold(
+        containerColor = Color.Transparent,
+        contentColor = Glass.text,
         topBar = {
             TopAppBar(
-                title = { Column { Text("My photos"); Text(displayName, style = MaterialTheme.typography.labelMedium) } },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent, titleContentColor = Glass.text, actionIconContentColor = Glass.text,
+                    navigationIconContentColor = Glass.text,
+                ),
+                title = { Column { Text("My photos"); Text(displayName, style = MaterialTheme.typography.labelMedium, color = Glass.muted) } },
                 actions = {
                     IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "Refresh") }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Menu") }
@@ -88,17 +97,17 @@ fun GalleryScreen(
     ) { padding ->
         if (photos.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No photos yet. Tap Camera to take one.")
+                Text("No photos yet. Tap Camera to take one.", color = Glass.text)
             }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(112.dp),
-                contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = padding.calculateTopPadding() + 4.dp, bottom = 96.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = padding.calculateTopPadding() + 6.dp, bottom = 96.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(photos, key = { it.localId }) { photo ->
-                    Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(6.dp)).clickable { onOpen(photo) }) {
+                    Box(Modifier.aspectRatio(1f).glass(RoundedCornerShape(14.dp)) { onOpen(photo) }) {
                         if (photo.sealed) SealedImage(
                             loadKey = photo.localId to unlockVersion,
                             load = sealedLoader(photo, true),
@@ -114,6 +123,7 @@ fun GalleryScreen(
                 }
             }
         }
+    }
     }
 }
 
